@@ -1,0 +1,30 @@
+# Environment & Secrets
+.env.local
+.env
+*.key.json
+/venv_test/
+__pycache__/
+*.pyc
+
+# Output Files
+sentiment_analysis_results.csv
+tamonashini_results.csv
+
+# Logs
+*.log
+/logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+/tmp/
+*.tmp
