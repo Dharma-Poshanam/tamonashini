@@ -82,13 +82,13 @@ class VideoDatabase:
         return {'total_sent': count}
 
 def get_previously_reported_videos(db_path: str = "tamonashini_videos.db", limit: int = 10) -> list:
-    """Get recently reported videos from database"""
+    """Get recently reported videos from database, sorted by sentiment (most negative first)"""
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('''
         SELECT video_id, title, channel, url, sent_date, sentiment_score, sentiment_label
         FROM sent_videos
-        ORDER BY sent_date DESC
+        ORDER BY sentiment_score ASC, sent_date DESC
         LIMIT ?
     ''', (limit,))
     videos = c.fetchall()
@@ -277,6 +277,9 @@ def run_analysis():
 
         # Filter out already-sent videos
         new_videos = [v for v in negative_videos if not db.is_sent(v.get('id'))]
+
+        # Sort by sentiment score (most negative first)
+        new_videos.sort(key=lambda v: v.get('analysis', {}).get('sentiment_score', 0))
 
         print(f"New videos (not previously sent): {len(new_videos)}\n")
 
