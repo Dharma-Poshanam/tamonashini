@@ -81,6 +81,45 @@ class VideoDatabase:
         conn.close()
         return {'total_sent': count}
 
+    def init_feedback_table(self):
+        """Initialize feedback table if it doesn't exist"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS video_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                feedback_type TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
+    def add_feedback(self, video_id: str, feedback_type: str, notes: str = ''):
+        """Add feedback for a video"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO video_feedback (video_id, feedback_type, notes)
+            VALUES (?, ?, ?)
+        ''', (video_id, feedback_type, notes))
+        conn.commit()
+        conn.close()
+
+    def get_feedback_for_video(self, video_id: str):
+        """Get feedback for a specific video"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute('''
+            SELECT feedback_type, timestamp, notes FROM video_feedback
+            WHERE video_id = ? ORDER BY timestamp DESC LIMIT 1
+        ''', (video_id,))
+        result = c.fetchone()
+        conn.close()
+        return result
+
 def get_previously_reported_videos(db_path: str = "tamonashini_videos.db", limit: int = 10) -> list:
     """Get recently reported videos from database, sorted by sentiment (most negative first)"""
     conn = sqlite3.connect(db_path)
@@ -141,7 +180,7 @@ Tamonashini with Qwen2.5 Sentiment Analysis
 Local SQLite database tracking
 """
 
-        # Add previously reported videos section
+        # Add previously reported videos section with feedback links
         prev_videos = get_previously_reported_videos(db_path)
         if prev_videos:
             body += f"\n\n📋 PREVIOUSLY REPORTED VIDEOS (Last {len(prev_videos)}):\n"
@@ -151,6 +190,11 @@ Local SQLite database tracking
                 body += f"   Channel: {channel}\n"
                 body += f"   Score: {score:.2f} | Sent: {sent_date[:10]}\n"
                 body += f"   URL: {url}\n"
+                body += f"   Feedback: [✓ Correct] [✗ False Positive] [? Uncertain]\n"
+                body += f"   Commands:\n"
+                body += f"     python3 feedback_handler.py submit {vid_id} correct\n"
+                body += f"     python3 feedback_handler.py submit {vid_id} false_positive\n"
+                body += f"     python3 feedback_handler.py submit {vid_id} uncertain\n"
 
         msg.attach(MIMEText(body, 'plain'))
 
