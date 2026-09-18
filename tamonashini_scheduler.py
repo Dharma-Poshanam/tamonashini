@@ -17,6 +17,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from email_template import generate_email_html
 from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -134,7 +135,7 @@ def get_previously_reported_videos(db_path: str = "tamonashini_videos.db", limit
     conn.close()
     return videos
 
-def send_email_with_csv(csv_file, recipient, videos_count, db_path: str = "tamonashini_videos.db"):
+def send_email_with_csv(csv_file, recipient, videos_count, db_path: str = "tamonashini_videos.db", new_videos: list = None):
     """Send email report (with or without videos)"""
 
     try:
@@ -147,56 +148,27 @@ def send_email_with_csv(csv_file, recipient, videos_count, db_path: str = "tamon
             print(f"⚠️  EMAIL_PASSWORD not set - skipping email")
             return False
 
-        msg = MIMEMultipart()
+        msg = MIMEMultipart('alternative')
         msg['From'] = sender_email
         msg['To'] = recipient
 
         if videos_count > 0:
             msg['Subject'] = f'Tamonashini Report - {videos_count} new videos - {datetime.now().strftime("%Y-%m-%d")}'
-            body = f"""Tamonashini Daily Analysis Report
-{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-✅ {videos_count} new negative/controversial videos found.
-Official channels filtered out.
-Results attached.
-
----
-Tamonashini with Qwen2.5 Sentiment Analysis
-Local SQLite database tracking
-"""
         else:
             msg['Subject'] = f'Tamonashini Report - No negative videos - {datetime.now().strftime("%Y-%m-%d")}'
-            body = f"""Tamonashini Daily Analysis Report
-{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-⊘ No new negative/controversial videos found.
-Official channels filtered out.
-
-Searched across multiple queries with sentiment analysis.
-No attachment (no new videos to report).
-
----
-Tamonashini with Qwen2.5 Sentiment Analysis
-Local SQLite database tracking
-"""
-
-        # Add previously reported videos section with feedback links
+        # Get previously reported videos
         prev_videos = get_previously_reported_videos(db_path)
-        if prev_videos:
-            body += f"\n\n📋 PREVIOUSLY REPORTED VIDEOS (Last {len(prev_videos)}):\n"
-            body += "=" * 70 + "\n"
-            for i, (vid_id, title, channel, url, sent_date, score, label) in enumerate(prev_videos, 1):
-                body += f"\n{i}. [{label.upper()}] {title}\n"
-                body += f"   Channel: {channel}\n"
-                body += f"   Score: {score:.2f} | Sent: {sent_date[:10]}\n"
-                body += f"   URL: {url}\n"
-                body += f"   Feedback: [✓ Correct] [✗ False Positive] [? Uncertain]\n"
-                body += f"   Commands:\n"
-                body += f"     python3 feedback_handler.py submit {vid_id} correct\n"
-                body += f"     python3 feedback_handler.py submit {vid_id} false_positive\n"
-                body += f"     python3 feedback_handler.py submit {vid_id} uncertain\n"
 
-        msg.attach(MIMEText(body, 'plain'))
+        # Generate HTML email with clickable buttons
+        if new_videos is None:
+            new_videos = []
+        html_body = generate_email_html(videos_count, new_videos, prev_videos or [])
+
+        # Attach both plain text and HTML versions
+        text_body = f"Tamonashini Daily Report - {datetime.now().strftime('%Y-%m-%d')}"
+        msg.attach(MIMEText(text_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
 
         # Only attach CSV if there are videos
         if videos_count > 0 and os.path.exists(csv_file):
@@ -381,13 +353,13 @@ def run_analysis():
         else:
             print(f"✅ No new truly negative videos found")
 
-        return len(new_videos)
+        return len(new_videos), new_videos
 
     except Exception as e:
         print(f"❌ Analysis error: {e}")
         import traceback
         traceback.print_exc()
-        return 0
+        return 0, []
 
 def main():
     """Main entry point"""
@@ -399,14 +371,14 @@ def main():
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
 
     # Run analysis
-    new_videos_count = run_analysis()
+    new_videos_count, new_videos = run_analysis()
 
     # Always send email (with or without videos)
     csv_file = Path(__file__).parent / 'sentiment_analysis_results.csv'
     recipient = os.getenv('RECIPIENT_EMAIL', 'cc@sumvid.ai')
 
     print(f"\nSending report to {recipient}...")
-    send_email_with_csv(str(csv_file), recipient, new_videos_count)
+    send_email_with_csv(str(csv_file), recipient, new_videos_count, new_videos=new_videos)
 
     return 0
 
