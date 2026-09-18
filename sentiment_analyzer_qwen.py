@@ -58,7 +58,7 @@ Sentiment score:
             response = requests.post(
                 self.api_endpoint,
                 json={
-                    "model": "local",
+                    "model": "Qwen2.5-7B-Instruct",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 256,
                     "temperature": 0.7
@@ -68,7 +68,12 @@ Sentiment score:
 
             if response.status_code == 200:
                 data = response.json()
-                text = data['choices'][0]['message']['content'].strip()
+                # vLLM returns Anthropic-style response format
+                if 'content' in data and isinstance(data['content'], list):
+                    text = data['content'][0]['text'].strip()
+                else:
+                    # Fallback for OpenAI-style format
+                    text = data['choices'][0]['message']['content'].strip()
 
                 # Extract JSON from response
                 try:
