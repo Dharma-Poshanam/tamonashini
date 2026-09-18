@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """
 HTML email templates with clickable feedback buttons
+Properly escapes all user-controlled data to prevent XSS
 """
+
+import html as html_module
+from datetime import datetime
+from urllib.parse import urlparse, quote
+
+def is_valid_youtube_url(url: str) -> bool:
+    """Validate that URL is a YouTube URL"""
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc in ('youtube.com', 'www.youtube.com', 'm.youtube.com')
+    except:
+        return False
 
 def generate_email_html(new_videos_count: int, new_videos: list, prev_videos: list, feedback_base_url: str = "http://localhost:9000") -> str:
     """Generate HTML email with clickable feedback buttons"""
 
-    from datetime import datetime
-
-    html = """<!DOCTYPE html>
+    email_html = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -50,6 +61,7 @@ def generate_email_html(new_videos_count: int, new_videos: list, prev_videos: li
             font-weight: bold;
             color: #2c3e50;
             font-size: 16px;
+            word-wrap: break-word;
         }
         .video-meta {
             color: #7f8c8d;
@@ -137,16 +149,19 @@ def generate_email_html(new_videos_count: int, new_videos: list, prev_videos: li
         <p class="timestamp">{timestamp}</p>
 """
 
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    email_html = email_html.replace("{timestamp}", timestamp)
+
     # Status section
     if new_videos_count > 0:
-        html += f"""
+        email_html += f"""
         <div class="status-box status-negative">
             <strong>⚠️ {new_videos_count} NEW NEGATIVE VIDEO(S) FOUND</strong>
             <p>Click feedback buttons below to validate accuracy</p>
         </div>
 """
     else:
-        html += """
+        email_html += """
         <div class="status-box status-positive">
             <strong>✅ NO NEW NEGATIVE VIDEOS FOUND</strong>
             <p>System is actively monitoring and all recently flagged content has been reviewed.</p>
@@ -155,57 +170,75 @@ def generate_email_html(new_videos_count: int, new_videos: list, prev_videos: li
 
     # New videos section
     if new_videos_count > 0:
-        html += f"<h2>🚨 NEW VIDEOS ({new_videos_count})</h2>"
+        email_html += f"<h2>🚨 NEW VIDEOS ({new_videos_count})</h2>"
         for i, video in enumerate(new_videos, 1):
-            vid_id = video.get('id')
-            title = video.get('title')
-            channel = video.get('channel')
+            vid_id = html_module.escape(str(video.get('id', '')))
+            title = html_module.escape(str(video.get('title', '')))
+            channel = html_module.escape(str(video.get('channel', '')))
             score = video.get('analysis', {}).get('sentiment_score', 0)
-            url = video.get('url')
+            url = video.get('url', '')
 
-            html += f"""
+            # Validate and escape YouTube URL
+            if is_valid_youtube_url(url):
+                safe_url = html_module.escape(url, quote=True)
+            else:
+                safe_url = '#'
+
+            # URL encode video_id for use in feedback URL
+            encoded_vid_id = quote(str(video.get('id', '')), safe='')
+
+            email_html += f"""
         <div class="video-card">
             <div class="video-title">{i}. {title}</div>
             <div class="video-meta">
                 <span class="video-score">{score:.2f}</span>
                 Channel: <strong>{channel}</strong><br>
-                <a href="{url}" target="_blank">Watch on YouTube →</a>
+                <a href="{safe_url}" target="_blank">Watch on YouTube →</a>
             </div>
             <div class="button-group">
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=correct" class="feedback-btn btn-correct">✓ Correct</a>
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=false_positive" class="feedback-btn btn-false-positive">✗ False Positive</a>
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=uncertain" class="feedback-btn btn-uncertain">? Uncertain</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=correct" class="feedback-btn btn-correct">✓ Correct</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=false_positive" class="feedback-btn btn-false-positive">✗ False Positive</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=uncertain" class="feedback-btn btn-uncertain">? Uncertain</a>
             </div>
         </div>
 """
 
     # Previously reported videos section
     if prev_videos:
-        html += f"<h2>📋 PREVIOUSLY REPORTED VIDEOS ({len(prev_videos)})</h2>"
+        email_html += f"<h2>📋 PREVIOUSLY REPORTED VIDEOS ({len(prev_videos)})</h2>"
         for i, video in enumerate(prev_videos, 1):
-            vid_id = video[0]
-            title = video[1]
-            channel = video[2]
+            vid_id = html_module.escape(str(video[0]))
+            title = html_module.escape(str(video[1]))
+            channel = html_module.escape(str(video[2]))
             url = video[3]
             score = video[5]
 
-            html += f"""
+            # Validate and escape YouTube URL
+            if is_valid_youtube_url(url):
+                safe_url = html_module.escape(url, quote=True)
+            else:
+                safe_url = '#'
+
+            # URL encode video_id for use in feedback URL
+            encoded_vid_id = quote(str(video[0]), safe='')
+
+            email_html += f"""
         <div class="video-card">
             <div class="video-title">{i}. {title}</div>
             <div class="video-meta">
                 <span class="video-score">{score:.2f}</span>
                 Channel: <strong>{channel}</strong><br>
-                <a href="{url}" target="_blank">Watch on YouTube →</a>
+                <a href="{safe_url}" target="_blank">Watch on YouTube →</a>
             </div>
             <div class="button-group">
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=correct" class="feedback-btn btn-correct">✓ Correct</a>
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=false_positive" class="feedback-btn btn-false-positive">✗ False Positive</a>
-                <a href="{feedback_base_url}/feedback?video_id={vid_id}&type=uncertain" class="feedback-btn btn-uncertain">? Uncertain</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=correct" class="feedback-btn btn-correct">✓ Correct</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=false_positive" class="feedback-btn btn-false-positive">✗ False Positive</a>
+                <a href="{feedback_base_url}/feedback?video_id={encoded_vid_id}&type=uncertain" class="feedback-btn btn-uncertain">? Uncertain</a>
             </div>
         </div>
 """
 
-    html += """
+    email_html += """
         <div class="footer">
             <p><strong>Tamonashini</strong> - Sentiment Analysis Monitoring System</p>
             <p>Powered by Qwen2.5-7B-Instruct (vLLM) | Feedback-driven threshold optimization</p>
@@ -216,4 +249,4 @@ def generate_email_html(new_videos_count: int, new_videos: list, prev_videos: li
 </html>
 """
 
-    return html.replace("{timestamp}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    return email_html

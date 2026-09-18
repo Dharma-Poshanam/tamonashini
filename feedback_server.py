@@ -5,7 +5,7 @@ Simple HTTP server to handle email button clicks
 Run with: python3 feedback_server.py [--port 9000]
 """
 
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify, redirect, escape
 import sys
 from feedback_handler import FeedbackQueue
 
@@ -26,6 +26,9 @@ def handle_feedback():
     success, message = queue.submit_feedback(video_id, feedback_type, notes)
 
     if request.method == 'GET':
+        # Escape message to prevent XSS
+        safe_message = escape(message)
+
         # Redirect back with success/error message
         if success:
             return f"""
@@ -40,7 +43,7 @@ def handle_feedback():
             </head>
             <body>
                 <div class="success">✅ Feedback Recorded!</div>
-                <div class="message">{message}</div>
+                <div class="message">{safe_message}</div>
                 <p style="margin-top: 40px; color: #95a5a6;">You can close this window.</p>
             </body>
             </html>
@@ -58,7 +61,7 @@ def handle_feedback():
             </head>
             <body>
                 <div class="error">❌ Error</div>
-                <div class="message">{message}</div>
+                <div class="message">{safe_message}</div>
                 <p style="margin-top: 40px; color: #95a5a6;">Please try again or contact support.</p>
             </body>
             </html>
