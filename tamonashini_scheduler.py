@@ -81,7 +81,21 @@ class VideoDatabase:
         conn.close()
         return {'total_sent': count}
 
-def send_email_with_csv(csv_file, recipient, videos_count):
+def get_previously_reported_videos(db_path: str = "tamonashini_videos.db", limit: int = 10) -> list:
+    """Get recently reported videos from database"""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''
+        SELECT video_id, title, channel, url, sent_date, sentiment_score, sentiment_label
+        FROM sent_videos
+        ORDER BY sent_date DESC
+        LIMIT ?
+    ''', (limit,))
+    videos = c.fetchall()
+    conn.close()
+    return videos
+
+def send_email_with_csv(csv_file, recipient, videos_count, db_path: str = "tamonashini_videos.db"):
     """Send email report (with or without videos)"""
 
     try:
@@ -126,6 +140,17 @@ No attachment (no new videos to report).
 Tamonashini with Qwen2.5 Sentiment Analysis
 Local SQLite database tracking
 """
+
+        # Add previously reported videos section
+        prev_videos = get_previously_reported_videos(db_path)
+        if prev_videos:
+            body += f"\n\n📋 PREVIOUSLY REPORTED VIDEOS (Last {len(prev_videos)}):\n"
+            body += "=" * 70 + "\n"
+            for i, (vid_id, title, channel, url, sent_date, score, label) in enumerate(prev_videos, 1):
+                body += f"\n{i}. [{label.upper()}] {title}\n"
+                body += f"   Channel: {channel}\n"
+                body += f"   Score: {score:.2f} | Sent: {sent_date[:10]}\n"
+                body += f"   URL: {url}\n"
 
         msg.attach(MIMEText(body, 'plain'))
 
