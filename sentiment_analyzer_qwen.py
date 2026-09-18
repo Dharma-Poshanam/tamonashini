@@ -12,9 +12,15 @@ from typing import Dict
 class QwenSentimentAnalyzer:
     """Sentiment analysis using local Qwen model via vLLM"""
 
-    def __init__(self, vllm_base_url: str = "http://127.0.0.1:8000"):
+    def __init__(self, vllm_base_url: str = "http://127.0.0.1:8000", use_feedback_context: bool = True):
         self.base_url = vllm_base_url
         self.api_endpoint = f"{vllm_base_url}/v1/messages"
+        self.use_feedback_context = use_feedback_context
+        self.feedback_context = ""
+
+        # Load feedback context if enabled
+        if use_feedback_context:
+            self._load_feedback_context()
 
         # Test connection
         try:
@@ -26,6 +32,15 @@ class QwenSentimentAnalyzer:
         except requests.exceptions.ConnectionError:
             print(f"⚠️  Cannot connect to vLLM at {self.base_url}")
             print("   Start it with: bash ~/infra/scripts/vllm-01-serve.sh Qwen/Qwen2.5-7B-Instruct 32768 0.80")
+
+    def _load_feedback_context(self):
+        """Load feedback-informed context for prompt refinement"""
+        try:
+            from feedback_analyzer import FeedbackAnalyzer
+            analyzer = FeedbackAnalyzer()
+            self.feedback_context = analyzer.generate_refined_prompt_context()
+        except (ImportError, Exception):
+            self.feedback_context = ""
 
     def analyze_video_title(self, title: str, channel: str) -> Dict:
         """Analyze video relevance and sentiment"""
@@ -52,7 +67,7 @@ Relevance criteria:
 Sentiment score:
 - Negative (-0.5 to -1.0): accuses, fraud, court case, scandal
 - Neutral (-0.1 to 0.1): educational, informational
-- Positive (0.1 to 1.0): praise, endorsement"""
+- Positive (0.1 to 1.0): praise, endorsement{self.feedback_context}"""
 
         try:
             response = requests.post(

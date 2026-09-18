@@ -220,6 +220,20 @@ Local SQLite database tracking
         print(f"❌ Email error: {e}")
         return False
 
+def get_dynamic_threshold(default: float = -0.65) -> float:
+    """Get sentiment threshold from feedback analysis, fall back to default"""
+    try:
+        from feedback_analyzer import FeedbackAnalyzer
+        analyzer = FeedbackAnalyzer()
+        threshold, metrics = analyzer.recommend_threshold(min_accuracy=75.0)
+        if threshold:
+            print(f"📊 Using feedback-based threshold: {threshold:.2f} (accuracy: {metrics['accuracy_pct']:.1f}%)")
+            return threshold
+    except (ImportError, Exception):
+        pass
+
+    return default
+
 def filter_with_qwen(videos):
     """Filter videos using Qwen sentiment analysis"""
     try:
@@ -313,11 +327,14 @@ def run_analysis():
         # Filter with Qwen
         filtered_videos = filter_with_qwen(all_videos)
 
-        # Filter truly negative videos (score < -0.65 to avoid false positives)
-        negative_videos = [v for v in filtered_videos
-                          if v.get('analysis', {}).get('sentiment_score', 0) < -0.65]
+        # Get dynamic threshold from feedback
+        threshold = get_dynamic_threshold()
 
-        print(f"\n✅ {len(negative_videos)} truly negative videos (score < -0.65)\n")
+        # Filter truly negative videos using dynamic threshold
+        negative_videos = [v for v in filtered_videos
+                          if v.get('analysis', {}).get('sentiment_score', 0) < threshold]
+
+        print(f"\n✅ {len(negative_videos)} truly negative videos (score < {threshold:.2f})\n")
 
         # Filter out already-sent videos
         new_videos = [v for v in negative_videos if not db.is_sent(v.get('id'))]
