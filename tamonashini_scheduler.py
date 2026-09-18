@@ -269,41 +269,53 @@ def run_analysis():
         # Filter with Qwen
         filtered_videos = filter_with_qwen(all_videos)
 
+        # Filter truly negative videos (score < -0.65 to avoid false positives)
+        negative_videos = [v for v in filtered_videos
+                          if v.get('analysis', {}).get('sentiment_score', 0) < -0.65]
+
+        print(f"\n✅ {len(negative_videos)} truly negative videos (score < -0.65)\n")
+
         # Filter out already-sent videos
-        new_videos = [v for v in filtered_videos if not db.is_sent(v.get('id'))]
+        new_videos = [v for v in negative_videos if not db.is_sent(v.get('id'))]
 
         print(f"New videos (not previously sent): {len(new_videos)}\n")
 
         # Create CSV
         csv_file = 'sentiment_analysis_results.csv'
         if new_videos:
-            fieldnames = ['id', 'title', 'channel', 'date', 'url', 'sentiment_score', 'sentiment_label']
+            fieldnames = ['video_id', 'title', 'channel', 'date', 'url', 'sentiment_score', 'sentiment_label', 'status']
             with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 for v in new_videos:
+                    score = v.get('analysis', {}).get('sentiment_score', 0)
+                    label = v.get('analysis', {}).get('sentiment_label', '')
+                    status = f"[{label.upper()}] {v.get('id')} | {v.get('title')[:50]} - {v.get('channel')} | Score: {score:.2f}"
+
                     row = {
-                        'id': v.get('id'),
+                        'video_id': v.get('id'),
                         'title': v.get('title'),
                         'channel': v.get('channel'),
                         'date': v.get('date'),
                         'url': v.get('url'),
-                        'sentiment_score': v.get('analysis', {}).get('sentiment_score', 0),
-                        'sentiment_label': v.get('analysis', {}).get('sentiment_label', ''),
+                        'sentiment_score': score,
+                        'sentiment_label': label,
+                        'status': status,
                     }
                     writer.writerow(row)
+
                     # Add to database
                     db.add_video(
                         v.get('id'),
                         v.get('title'),
                         v.get('channel'),
                         v.get('url'),
-                        v.get('analysis', {}).get('sentiment_score', 0),
-                        v.get('analysis', {}).get('sentiment_label', '')
+                        score,
+                        label
                     )
-            print(f"✅ {len(new_videos)} new videos saved to {csv_file}")
+            print(f"✅ {len(new_videos)} new negative videos saved to {csv_file}")
         else:
-            print(f"✅ No new negative videos found")
+            print(f"✅ No new truly negative videos found")
 
         return len(new_videos)
 
